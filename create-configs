@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# I created this to generate the config files needed to auto provision Polycom IP335's
+
 function mkextenconfigs(){
   echo "This will destroy any previously created configuration files for extensions in the provided file"
   get_response
