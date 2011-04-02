@@ -1,0 +1,138 @@
+#!/bin/bash
+
+function mkextenconfigs(){
+  echo "This will destroy any previously created configuration files for extensions in the provided file"
+  get_response
+
+  EXTEN_LIST=$OPTARG
+
+  if [ -f "$EXTEN_LIST" ]
+    then
+    cat $EXTEN_LIST | while read entry
+      do 
+        IFS=$','
+        set $entry
+        EXTEN=$1
+        DISPLAY_NAME=$2
+        SECRET=$3
+        MAC_ADDR=$4
+
+        MAC_CONFIG=$(cat <<EOF
+<?xml version="1.0" standalone="yes"?>
+  <APPLICATION APP_FILE_PATH="sip.ld" CONFIG_FILES="x$EXTEN.cfg, server.cfg" MISC_FILES="" LOG_FILE_DIRECTORY="/tftpboot/logs" OVERRIDES_DIRECTORY="" CONTACTS_DIRECTORY=""/>
+EOF
+)
+
+        EXTEN_CONFIG=$(cat << EOF
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Per-phone configuration in this file -->
+<reginfo>
+  <reg
+        reg.1.displayName="$DISPLAY_NAME"
+        reg.1.address="$EXTEN"
+        reg.1.label="$EXTEN" 
+        reg.1.auth.userId="$EXTEN"
+        reg.1.auth.password="$SECRET"
+        reg.1.lineKeys="2"
+   />
+</reginfo>
+EOF
+)
+
+      echo $MAC_CONFIG > /tftpboot/$MAC_ADDR.cfg
+      chmod 777 /tftpboot/$MAC_ADDR.cfg
+      echo $EXTEN_CONFIG > /tftpboot/x$EXTEN.cfg
+      chmod 777 /tftpboot/x$EXTEN.cfg
+
+    done
+  else
+      echo "Something is not quite right"
+  fi
+
+}
+
+function mkserverconfig(){
+  echo "This will destroy any previously created server.cfg"
+  get_response
+
+  read -p "What is the ip of the PBX server? " PBX_IP
+  read -p "What is the GMT offset for the server? " GMT_OFFSET
+
+  GMT_OFFSET=$(($GMT_OFFSET * 3600))
+
+  SERVER_CONFIG=$(cat <<EOF
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Local phone system common configuration in this file -->
+<localcfg>
+ <server voIpProt.server.1.address="$PBX_IP"/>
+ <SIP>
+   <outboundProxy voIpProt.SIP.outboundProxy.address="$PBX_IP"/>
+ </SIP>
+ <SNTP
+   tcpIpApp.sntp.daylightSavings.enable="1"
+   tcpIpApp.sntp.address="clock.psu.edu"
+   tcpIpApp.sntp.gmtOffset="$GMT_OFFSET"
+ />
+ <voice>
+   <volume voice.volume.persist.handset="1"
+     voice.volume.persist.headset="1"/>
+ </voice>
+<localcfg>
+EOF
+)
+  echo "$SERVER_CONFIG" > /tftpboot/server.cfg
+  chmod 777 /tftpboot/server.cfg
+}
+
+function usage(){
+  cat <<EOF
+Usage: create-configs  -[ s | e | h ]
+  -s : Create a new server.cfg file
+  -e : Create new extension configs from a file (requires a file as arguement)
+  -h : This help
+EOF
+}
+
+function get_response(){
+    # Helper function to get a yes/no response
+    read -p "Should I proceed? [y/n] " yn
+    case $yn in
+        [Yy]*)
+            return;;
+        [Nn]*)
+            exit;;
+        *)
+            echo "That makes no sense"
+            exit;;
+    esac
+}
+
+# parse args
+while getopts ":se:h" arg; do
+  case $arg in
+    s)
+      mkserverconfig
+      ;;
+    e)
+      mkextenconfigs
+      ;;
+    h)
+      usage
+      ;;
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      usage
+      exit 1
+      ;;
+    :)
+      echo "Option -$OPTARG requires an argument." >&2
+      usage
+      exit 1
+      ;;
+    *)
+      echo "You got me pal." >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
